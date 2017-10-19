@@ -1,11 +1,12 @@
 import re
 import pandas as pd
 import numpy as np
+import sys
 from operator import itemgetter
-from itertools import compress
+from itertools import compress, combinations,chain
 from scipy.optimize import leastsq
 from numpy.linalg import lstsq
-
+from operations import *
 
 def meanSquareError(points, x = None):
     if x is None:
@@ -26,6 +27,36 @@ def dataGroupUnion():
     return
 
 
+def medianRatioNormalization(df,dm):
+    # Uncomment to perform medianRatioNormalization in groups
+    # for key,group_data in dm.iterateData('replicant'):
+    #     for key,group_data in dm.iterateData('time'):
+    #         samples = set()
+    # samples = list(group_data.values())
+    # new_key = '_'.join([key,'x'])
+
+    # Comment these
+    samples = list(df)
+    new_key = 'xi'
+    # until here 
+
+    # Insert temporarily with the key
+    df[new_key] = x_hat(df[samples].values)
+    for sample in samples:
+        df[sample] = df[sample] / (df[sample] / df[new_key]).median()     
+    df.drop(new_key, axis = 1, inplace = True)
+
+def aggregateTimeSequenceData(df,dm):
+    for time_set in all_combinations(dict(dm.iterateData('time')).keys()):
+        pass
+
+
+# Use this to generate pairs
+# minimize variance across replicants
+def all_combinations(any_list):
+    return chain.from_iterable(
+        combinations(any_list, i)
+        for i in range(1, len(any_list) + 1))
 
 class DataModel:
     data_model = {}
@@ -78,16 +109,17 @@ class DataModel:
         return pop_df
 
 
-    def reduceDataModel(self, data_name, delim = '_'):   
+    def reduceDataModel(self, data_name):   
         try:
             reduced_attr = self.data_model[data_name]
             data_index = self.fields.index(data_name)
+            
         except KeyError:
             print('Data field',data_type,'not found')
 
         #Build a new data model
-        new_dm ={}
-        reduced_mask = [1] * len(dict_name_list)
+        new_dm = {}
+        reduced_mask = [1] * len(self.fields)
         reduced_mask[data_index] = 0
     
 
@@ -105,7 +137,7 @@ class DataModel:
             try:
                 current_field_index = self.fields.index(field)
             except ValueError:
-                print('Data field',data_type,'not available in the list')
+                print('Data field',data_name,'not available in the list')
 
 
             # Generate bit mask to remove irrelevant fields for the alias
@@ -116,10 +148,10 @@ class DataModel:
             for group, alias_dict in groups.items():
                 new_group = {}
                 for alias, ref_name in alias_dict.items():
-                    old_col_name = re.split(delim, ref_name)
-                    col_name = delim.join(compress(old_col_name, reduced_mask))
-                    alias_name = delim.join(compress(old_col_name, alias_mask))
-                    new_group[alias_namecol] = _name
+                    old_col_name = re.split(self.delim, ref_name)
+                    col_name = self.delim.join(compress(old_col_name, reduced_mask))
+                    alias_name = self.delim.join(compress(old_col_name, alias_mask))
+                    new_group[alias_name] = col_name
                     new_dm[field][group] = new_group
 
         # Modify the current data model
@@ -127,12 +159,13 @@ class DataModel:
         return new_dm
 
     # Generator that iterates groups
-    def iterateGroup(self, attribute, delim = '_'):
+    def iterate(self, attribute):
         try:
             group = self.data_model[attribute]
             data_index = self.fields.index(attribute)
         except KeyError:
             print('Key error:',attribute, ' not available in data model')
+            sys.exit(1)
 
         reduced_mask = [1] * len(self.fields)
         reduced_mask[data_index] = 0
@@ -140,12 +173,21 @@ class DataModel:
         if attribute == 'time':
             indexes = sorted(map(int, group.keys()))
         else:
-            indexes = group.keys()
+            indexes = list(group.keys())
+        
         base_keys = group[str(indexes[0])].keys()
         for key in base_keys:
-            name_t = re.split(delim, key)
-            group_name = delim.join(compress(name_t, reduced_mask))
-            yield (group_name,indexes,[group[str(index)][key] for index in indexes])
+            name_t = re.split(self.delim, key)
+            group_name = self.delim.join(compress(name_t, reduced_mask))
+            yield (group_name, indexes, [group[str(index)][key] for index in indexes])
+                
+            
+
+    def iterateData(self, attribute):
+        return self.data_model[attribute].items()
+        
+
+    # exploratory time analysis
     def exploreTimesequence(self, df):
         # agg_func = np.vectorize(meanSquareError)
         res_df = pd.DataFrame(index=df.index)

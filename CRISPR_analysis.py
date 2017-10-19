@@ -1,4 +1,5 @@
 from DataModel import *
+from operations import *
 import pandas as pd
 import numpy as np
 import itertools
@@ -10,16 +11,20 @@ filename = '/lustre/scratch117/casm/team82/np13/CRISPR_170523_human/counts_olly_
 
 df = pd.read_csv(filename, index_col = 'libID')
 
-#Remember to remove this when data is fixed
-df = df.select(lambda col: (not col.endswith('7')), axis=1)
+# Remember to remove this when data is fixed
+# Workaround for the corrupt data
+# df = df.select(lambda col: (not col.endswith('7')), axis=1)
 
 seq_data_df = df[['geneID','guide']]
 df = df.drop(['geneID','guide'], axis=1)
 dm = DataModel(df, field_names)
 
-time_df = dm.compare_time_sequence(df)
+medianRatioNormalization(df, dm)
 
-ts_error = dm.exploreTimesequence(time_df)
+#time_df = dm.compare_time_sequence(df)
+
+#ts_error = dm.exploreTimesequence(time_df)
+
 
 #timestamps = calculate_timestamps(df, data_attr)
 
@@ -36,9 +41,6 @@ ts_error = dm.exploreTimesequence(time_df)
 #     dataGroupReduction(old_df, reduced_attr)
 #     result_set[(t1,t2)] = dataGroupReduction(df, data)
 #     time_df,reduceDictionary(df,)
-
-
-
 
 
 
