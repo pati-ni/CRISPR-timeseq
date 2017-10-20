@@ -46,9 +46,18 @@ def medianRatioNormalization(df,dm):
         df[sample] = df[sample] / (df[sample] / df[new_key]).median()     
     df.drop(new_key, axis = 1, inplace = True)
 
+
+
 def aggregateTimeSequenceData(df,dm):
-    for time_set in all_combinations(dict(dm.iterateData('time')).keys()):
-        pass
+    for time_set in all_combinations(dict(dm.iterateData('time')).values()):
+        time_samples = list(chain.from_iterable(ts.values() for ts in time_set))
+        for replicant, replicant_samples in dm.iterateData('replicant'):
+            pass
+            #replicants_group = set(replicant_samples.values()).intersection(time_samples))
+            #for cell_type, cell_samples in dm.iterate(''
+            
+        #print(set(samples).intersection(list(replicant.values())))
+            
 
 
 # Use this to generate pairs
@@ -107,6 +116,17 @@ class DataModel:
                 pop_df[moments_key] = 1 - (base_df - df[col_map[alias]]) / base_df
                 pop_df[moments_key] = - pop_df[moments_key].apply(np.log)
         return pop_df
+
+
+    def splitNestedData(self, samples, fields):
+        if not fields:
+            yield samples
+
+        for group_id, group in self.iterateData(fields[0]):
+            group_members = set(group.values()).intersection(samples)
+            yield self.splitNestedData(list(group_members), fields[1:])
+            
+
 
 
     def reduceDataModel(self, data_name):   
