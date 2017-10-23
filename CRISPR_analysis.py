@@ -6,7 +6,7 @@ import itertools
 import copy
 
 field_names = ['cell_type', 'replicant', 'protein', 'type', 'time']
-
+zero_threshold = 0.3
 filename = '/lustre/scratch117/casm/team82/np13/CRISPR_170523_human/counts_olly_CRISPR_170523_human_hsLibV1Kosuke19nt.csv'
 
 df = pd.read_csv(filename, index_col = 'libID')
@@ -19,9 +19,31 @@ seq_data_df = df[['geneID','guide']]
 df = df.drop(['geneID','guide'], axis=1)
 dm = DataModel(df, field_names)
 
+for column in list(df):
+    col_zeros = (df[column] ==  0).sum()
+    if col_zeros / df.shape[0] > zero_threshold:
+        df = df.drop(column, axis = 1)
+        dm.remove(column)
+        print('Dropped column', column, ': Too many zeros,',col_zeros,'out of',df.shape[0])
+
+
 # Normalize Data
 medianRatioNormalization(df, dm)
 
+# Exploratory analysis on time sequence data
+best_groups, best_values = timeSequenceGroups(df,dm)
+
+
+
+exp_col = {}
+for column in list(best_groups):
+    exp_col[column] = best_groups[column].value_counts().index[0]
+    # Inspect Data
+    print(best_groups[column].value_counts())
+
+
+
+    
 #time_df = dm.compare_time_sequence(df)
 
 #ts_error = dm.exploreTimesequence(time_df)

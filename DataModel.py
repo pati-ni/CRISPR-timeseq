@@ -49,16 +49,45 @@ def medianRatioNormalization(df,dm):
 
 
 
-def aggregateTimeSequenceData(df,dm):
+def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
+    
+    print('Array shape:', df.shape)
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+    #print('Finding best sequence based on:',df.shape,'values')
+    compare_df = pd.DataFrame(index = df.index)
+    arg_compare_df = pd.DataFrame(index = df.index)
+
     for time_set in all_combinations(dict(dm.iterateData('time')).values()):
         time_samples = list(chain.from_iterable(ts.values() for ts in time_set))
-        for replicant, replicant_samples in dm.iterateData('replicant'):
-            pass
-            #replicants_group = set(replicant_samples.values()).intersection(time_samples))
-            #for cell_type, cell_samples in dm.iterate(''
-            
-        #print(set(samples).intersection(list(replicant.values())))
-            
+        for group_id, unique_set in dm.splitNestedData(time_samples, fields):
+            # If we do not have any replicants, continue
+            if len(unique_set) == 1:
+                print('skipping', unique_set)
+                #print(list(dm.splitNestedData(unique_set,['replicant'])))
+                continue
+            mean_df = pd.DataFrame(index = df.index)
+            gid = []
+            for i, (_, replicant) in enumerate(dm.splitNestedData(unique_set,['replicant'])):
+                if _ == '':
+                    continue
+                mean_df[str(i)+_] = df[list(replicant)].T.mean()
+                gid.append(str(list(replicant)))
+
+            gid = '->'.join(gid)
+            # mad is mean absolute deviation
+            mean_df['mad'] = mean_df.T.mad()
+            if group_id in compare_df.columns:
+                # key already present compare existing data
+                better_mean = compare_df[group_id] < mean_df['mad']
+                # arg_compare_df[group_id].loc[better_mean] = str(unique_set)
+                arg_compare_df[group_id].loc[better_mean] = gid
+                compare_df[group_id].loc[better_mean] = mean_df.T.mad()
+            else:
+                # previous group not present 
+                compare_df[group_id] = mean_df.T.mad()
+                arg_compare_df[group_id] = str(unique_set)
+    return arg_compare_df, compare_df
+
 
 
 # Use this to generate pairs
@@ -80,7 +109,7 @@ class DataModel:
         # Initialize with empty dict for attributes our model
         for attribute in self.fields:
             self.data_model[attribute] = {}
-            # Generate # TODO: he indexes
+            # Generate the indexes
         for column_name in df_columns:
             col_meta = re.split(delim, column_name)
             if len(col_meta) != len(self.fields):
@@ -91,7 +120,6 @@ class DataModel:
                 if not (meta_val in self.data_model[attribute]):
                     self.data_model[attribute][meta_val] = {}
                 self.data_model[attribute][meta_val][delim.join(col_meta[:index] + col_meta[index+1:])] = column_name
-
 
 
     def calculate_timestamps(self, df):
@@ -119,20 +147,54 @@ class DataModel:
         return pop_df
 
 
-    def splitNestedData(self, samples, fields):
+    # Uses the data model and a set of desired fields
+    # to produce groups of samples
+    def splitNestedData(self, samples, fields, original_fields = None):
+        if not samples:
+            yield '', samples
+            raise StopIteration
+            #raise ValueError('No samples available')
+
+        if original_fields is None:
+            original_fields = list(fields)
+
         if not fields:
             # Hooray! We reached the final level of nesting
             # Yield results and stop iteration
-            yield samples
+            yield self.maskID(next(iter(samples)),original_fields), samples
             raise StopIteration
+
         # Iterate over possible groups
         for group_id, group in self.iterateData(fields[0]):
             group_members = set(group.values()).intersection(samples)
             # Not in the level we want so evaluate recursive calls
-            for split_group in self.splitNestedData(group_members, fields[1:]):
+            for split_group in self.splitNestedData(group_members, fields[1:], original_fields = original_fields):
                 yield split_group
 
+    def maskID(self, sample_id, active_fields, discard = False):
+        # Disable all fields in starting mask
+        pre_value = discard
+        mask = [pre_value]*len(self.fields)
+        for field in active_fields:
+            try:
+                field_index = self.fields.index(field)
+                # Enable field in mask
+                mask[field_index] = not pre_value
+            except ValueError:
+                print('Field',field ,'not found')
 
+        split_attrs = re.split(self.delim,sample_id)
+        return self.delim.join(compress(split_attrs,mask))
+
+    def remove(self, rem_id):
+        for field, groups in self.data_model.items():
+            # alias_id = self.maskID(rem_id, [field], discard = True)
+                for key, group in groups.items():
+                    self.data_model[field][key] = { k:v for k, v in group.items() if v != rem_id }
+                            
+                    # del self.data_model[field][key][alias_id]
+            # except KeyError:
+                # print('Data model corruption, trying to remove',alias_id,'from',key)
 
     def reduceDataModel(self, data_name):   
         try:
@@ -190,7 +252,7 @@ class DataModel:
             data_index = self.fields.index(attribute)
         except KeyError:
             print('Key error:',attribute, ' not available in data model')
-            sys.exit(1)
+            
 
         reduced_mask = [1] * len(self.fields)
         reduced_mask[data_index] = 0
