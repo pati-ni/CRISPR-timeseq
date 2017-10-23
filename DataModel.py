@@ -7,6 +7,7 @@ from itertools import compress, combinations,chain
 from scipy.optimize import leastsq
 from numpy.linalg import lstsq
 from operations import *
+import sys
 
 def meanSquareError(points, x = None):
     if x is None:
@@ -120,12 +121,16 @@ class DataModel:
 
     def splitNestedData(self, samples, fields):
         if not fields:
+            # Hooray! We reached the final level of nesting
+            # Yield results and stop iteration
             yield samples
-
+            raise StopIteration
+        # Iterate over possible groups
         for group_id, group in self.iterateData(fields[0]):
             group_members = set(group.values()).intersection(samples)
-            yield self.splitNestedData(list(group_members), fields[1:])
-            
+            # Not in the level we want so evaluate recursive calls
+            for split_group in self.splitNestedData(group_members, fields[1:]):
+                yield split_group
 
 
 

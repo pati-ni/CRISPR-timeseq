@@ -19,6 +19,7 @@ seq_data_df = df[['geneID','guide']]
 df = df.drop(['geneID','guide'], axis=1)
 dm = DataModel(df, field_names)
 
+# Normalize Data
 medianRatioNormalization(df, dm)
 
 #time_df = dm.compare_time_sequence(df)
