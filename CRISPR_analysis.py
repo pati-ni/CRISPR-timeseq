@@ -43,11 +43,19 @@ for column in list(best_groups):
     # Inspect Data
     print(best_groups[column].value_counts())
 
-control_df = getFinalData(df,exp_col,'OCI2_MT')
-treat_df = getFinalData(df,exp_col,'OCI2_WT')
-
-extractBestData(control_df)
+# print(exp_col)
 
 for k, v in avg_results.items():
-    print(k,': best time point combination is:',min(v,key=lambda x:x[0]))
-    pass
+    print(k,': best time point combination is:',min(v, key = lambda x:x[0]))
+
+
+control_df = extractBestData(df,exp_col,'OCI2_MT')
+treat_df = extractBestData(df,exp_col,'OCI2_WT')
+
+model = empiricalRegression(control_df)
+
+#test = np.log(control_df.T.mean())
+
+
+
+

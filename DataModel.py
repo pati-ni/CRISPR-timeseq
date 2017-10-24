@@ -1,10 +1,8 @@
 import re
 import pandas as pd
 import numpy as np
-import sys
 from operator import itemgetter
 from itertools import compress, combinations, chain
-from scipy.optimize import leastsq
 from numpy.linalg import lstsq
 from operations import *
 from ast import literal_eval
@@ -42,7 +40,7 @@ def extractBestData(df, exp_col, key):
 
 def empiricalRegression(control_df, cutoff = 10):
 
-    print('Regression analysis at the control:',list(control_df),'Treatment:',list(treat_df))
+    print('Regression analysis at the control:',list(control_df))
 
     print('Dropping low count elements', (control_df.T.mean() < cutoff).sum() )
     control_df = control_df.loc[control_df.T.mean() > cutoff]
@@ -51,18 +49,18 @@ def empiricalRegression(control_df, cutoff = 10):
     regression_df['mean'] = control_df.T.mean()
     
     #Keep only overdispersed data, model limitation (Mageck)
-    regression_df = regression.loc[regression_df['mean'] < control_df.T.var()]
-    print('Removed underdispersed data',control_df.shape)
+    print('Keeping only overdispersed data...', (regression_df['mean'] < control_df.T.var()).sum())
+    regression_df = regression_df.loc[regression_df['mean'] < control_df.T.var()]
+    
 
     regression_df['var_dif'] = np.log(control_df.T.var() - regression_df['mean'])
     regression_df['mean'] = np.log(regression_df['mean'])
 
     lr = LinearRegression(n_jobs = -1)
-    #Well not good enough ?
-    regression_df = regression_df.dropna()
     lr.fit(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
     error = lr.score(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
     print('Regression run, regression score error:',error)
+    return lr
 
     
 # Returns a argmin histogram of the samples combinations with minimized mean deviation
@@ -88,14 +86,20 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
 
             # the id of argmin
             gid = []
-            for i, (_, replicant) in enumerate(dm.splitNestedData(unique_set,['replicant'])):
+            for i, (_, replicant) in enumerate(dm.splitNestedData(unique_set, ['replicant'])):
                 # if replicant not available, continue
                 if _ == '':
                     continue
-                mean_df[str(i)+_] = df[list(replicant)].T.mean()
-                gid.append(str(list(replicant)))
+
+                # Compute the mean accross replicant's timepoints
+                mean_df[str(i) + _] = df[list(replicant)].T.mean()
+
+                gid.append(str(sorted(list(replicant))))
+
+            # Eye candy for the argmin
             gid = '->'.join(gid)
-            # mad is mean absolute deviation
+            
+            # mad: mean absolute deviation
             mean_df['mad'] = mean_df.T.mad()
             
             #Arthur's case
@@ -103,15 +107,12 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
                 test_avg[group_id] = []
             test_avg[group_id].append((mean_df['mad'].mean(),gid))
 
-
             if group_id in compare_df.columns:
                 # key already present compare existing data
                 better_mean = compare_df[group_id] > mean_df['mad']
                 #print(unique_set,':',better_mean.sum())
-                # arg_compare_df[group_id].loc[better_mean] = str(unique_set)
-                arg_compare_df[group_id].loc[better_mean] = gid
+                arg_compare_df[group_id].loc[better_mean] = gid # alias for str(unique_set)
                 compare_df[group_id].loc[better_mean] = mean_df['mad']
-
             else:
                 # previous group not present
                 # set min and argmin
@@ -207,7 +208,7 @@ class DataModel:
         # Disable all fields in starting mask
         if fields is None:
             fields = self.fields
-        
+
         pre_value = discard
         mask = [pre_value]*len(fields)
         for field in active_fields:
@@ -223,13 +224,8 @@ class DataModel:
 
     def remove(self, rem_id):
         for field, groups in self.data_model.items():
-            # alias_id = self.maskID(rem_id, [field], discard = True)
-                for key, group in groups.items():
-                    self.data_model[field][key] = { k:v for k, v in group.items() if v != rem_id }
-                            
-                    # del self.data_model[field][key][alias_id]
-            # except KeyError:
-                # print('Data model corruption, trying to remove',alias_id,'from',key)
+            for key, group in groups.items():
+                self.data_model[field][key] = { k:v for k, v in group.items() if v != rem_id }
 
     def reduceDataModel(self, data_name):   
         try:
