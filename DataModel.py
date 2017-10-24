@@ -24,11 +24,9 @@ def dataGroupReduction(df,id1,id2,threshold = 1):
         
     return df1.index.intersection(df2.index)
 
-def dataGroupUnion():
-    return
-
 
 def medianRatioNormalization(df,dm):
+    print('Normalizing data')
     # Uncomment to perform medianRatioNormalization in groups
     # for key,group_data in dm.iterateData('replicant'):
     #     for key,group_data in dm.iterateData('time'):
@@ -48,10 +46,12 @@ def medianRatioNormalization(df,dm):
     df.drop(new_key, axis = 1, inplace = True)
 
 
-
+# Returns a argmin min histogram of the samples combinations with minimized mean deviation
+# Each count represent a guide RNA
 def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
     
-    print('Array shape:', df.shape)
+    print('Rating Samples')
+    # print('Array shape:', df.shape)
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
     #print('Finding best sequence based on:',df.shape,'values')
     compare_df = pd.DataFrame(index = df.index)
@@ -60,19 +60,21 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
     for time_set in all_combinations(dict(dm.iterateData('time')).values()):
         time_samples = list(chain.from_iterable(ts.values() for ts in time_set))
         for group_id, unique_set in dm.splitNestedData(time_samples, fields):
-            # If we do not have any replicants, continue
-            if len(unique_set) == 1:
+            # If we do not have more than 2 replicants, skip the sample
+            if len(unique_set) < 2:
                 print('skipping', unique_set)
                 #print(list(dm.splitNestedData(unique_set,['replicant'])))
                 continue
             mean_df = pd.DataFrame(index = df.index)
+
+            # the id of argmin
             gid = []
             for i, (_, replicant) in enumerate(dm.splitNestedData(unique_set,['replicant'])):
+                # if replicant not available continue
                 if _ == '':
                     continue
                 mean_df[str(i)+_] = df[list(replicant)].T.mean()
                 gid.append(str(list(replicant)))
-
             gid = '->'.join(gid)
             # mad is mean absolute deviation
             mean_df['mad'] = mean_df.T.mad()
@@ -81,11 +83,12 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
                 better_mean = compare_df[group_id] < mean_df['mad']
                 # arg_compare_df[group_id].loc[better_mean] = str(unique_set)
                 arg_compare_df[group_id].loc[better_mean] = gid
-                compare_df[group_id].loc[better_mean] = mean_df.T.mad()
+                compare_df[group_id].loc[better_mean] = mean_df['mad']
             else:
-                # previous group not present 
+                # previous group not present
+                # set min and argmin
                 compare_df[group_id] = mean_df.T.mad()
-                arg_compare_df[group_id] = str(unique_set)
+                arg_compare_df[group_id] = gid
     return arg_compare_df, compare_df
 
 
