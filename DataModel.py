@@ -3,27 +3,14 @@ import pandas as pd
 import numpy as np
 import sys
 from operator import itemgetter
-from itertools import compress, combinations,chain
+from itertools import compress, combinations, chain
 from scipy.optimize import leastsq
 from numpy.linalg import lstsq
 from operations import *
-import sys
+from ast import literal_eval
+from sklearn.linear_model import LinearRegression
 
-def meanSquareError(points, x = None):
-    if x is None:
-        x = np.arange(len(points))
-        # Distance from plane
-    A = np.vstack([x,np.ones(len(x))]).T
-    y = np.array(points)
-    e = lstsq(A,y)[1][0]
-    return e
-
-def dataGroupReduction(df,id1,id2,threshold = 1):    
-    df1 = df[df[id1] < threshold][id1]
-    df2 = df[df[id2] < threshold][id2]
-        
-    return df1.index.intersection(df2.index)
-
+# TODO: use logging module
 
 def medianRatioNormalization(df,dm):
     print('Normalizing data')
@@ -46,11 +33,43 @@ def medianRatioNormalization(df,dm):
     df.drop(new_key, axis = 1, inplace = True)
 
 
-# Returns a argmin min histogram of the samples combinations with minimized mean deviation
+def extractBestData(df, exp_col, key):
+    exp_df = pd.DataFrame(index = df.index)
+    for index, samples in enumerate(re.split('->', exp_col[key])):
+        # Will it blow ?? 3 , 2 , 1 ...
+        exp_df['_'.join([key, str(index)])] = df[literal_eval(samples)].T.mean()
+    return exp_df
+
+def empiricalRegression(control_df, cutoff = 10):
+
+    print('Regression analysis at the control:',list(control_df),'Treatment:',list(treat_df))
+
+    print('Dropping low count elements', (control_df.T.mean() < cutoff).sum() )
+    control_df = control_df.loc[control_df.T.mean() > cutoff]
+    
+    regression_df = pd.DataFrame(index = control_df.index)
+    regression_df['mean'] = control_df.T.mean()
+    
+    #Keep only overdispersed data, model limitation (Mageck)
+    regression_df = regression.loc[regression_df['mean'] < control_df.T.var()]
+    print('Removed underdispersed data',control_df.shape)
+
+    regression_df['var_dif'] = np.log(control_df.T.var() - regression_df['mean'])
+    regression_df['mean'] = np.log(regression_df['mean'])
+
+    lr = LinearRegression(n_jobs = -1)
+    #Well not good enough ?
+    regression_df = regression_df.dropna()
+    lr.fit(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
+    error = lr.score(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
+    print('Regression run, regression score error:',error)
+
+    
+# Returns a argmin histogram of the samples combinations with minimized mean deviation
 # Each count represent a guide RNA
 def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
-    
     print('Rating Samples')
+    test_avg = {}
     # print('Array shape:', df.shape)
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
     #print('Finding best sequence based on:',df.shape,'values')
@@ -62,7 +81,7 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
         for group_id, unique_set in dm.splitNestedData(time_samples, fields):
             # If we do not have more than 2 replicants, skip the sample
             if len(unique_set) < 2:
-                print('skipping', unique_set)
+                print('warn: Skipping', unique_set,', no replicant available')
                 #print(list(dm.splitNestedData(unique_set,['replicant'])))
                 continue
             mean_df = pd.DataFrame(index = df.index)
@@ -70,7 +89,7 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
             # the id of argmin
             gid = []
             for i, (_, replicant) in enumerate(dm.splitNestedData(unique_set,['replicant'])):
-                # if replicant not available continue
+                # if replicant not available, continue
                 if _ == '':
                     continue
                 mean_df[str(i)+_] = df[list(replicant)].T.mean()
@@ -78,18 +97,28 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
             gid = '->'.join(gid)
             # mad is mean absolute deviation
             mean_df['mad'] = mean_df.T.mad()
+            
+            #Arthur's case
+            if not group_id in test_avg:
+                test_avg[group_id] = []
+            test_avg[group_id].append((mean_df['mad'].mean(),gid))
+
+
             if group_id in compare_df.columns:
                 # key already present compare existing data
-                better_mean = compare_df[group_id] < mean_df['mad']
+                better_mean = compare_df[group_id] > mean_df['mad']
+                #print(unique_set,':',better_mean.sum())
                 # arg_compare_df[group_id].loc[better_mean] = str(unique_set)
                 arg_compare_df[group_id].loc[better_mean] = gid
                 compare_df[group_id].loc[better_mean] = mean_df['mad']
+
             else:
                 # previous group not present
                 # set min and argmin
-                compare_df[group_id] = mean_df.T.mad()
+                compare_df[group_id] = mean_df['mad']
                 arg_compare_df[group_id] = gid
-    return arg_compare_df, compare_df
+
+    return test_avg, arg_compare_df, compare_df
 
 
 
@@ -107,7 +136,7 @@ class DataModel:
         df_columns = list(df)
         self.fields = fields[:]
         self.initial_fields = fields[:]
-        self.delim = '_'
+        self.delim = delim
 
         # Initialize with empty dict for attributes our model
         for attribute in self.fields:
@@ -174,13 +203,16 @@ class DataModel:
             for split_group in self.splitNestedData(group_members, fields[1:], original_fields = original_fields):
                 yield split_group
 
-    def maskID(self, sample_id, active_fields, discard = False):
+    def maskID(self, sample_id, active_fields, discard = False, fields = None):
         # Disable all fields in starting mask
+        if fields is None:
+            fields = self.fields
+        
         pre_value = discard
-        mask = [pre_value]*len(self.fields)
+        mask = [pre_value]*len(fields)
         for field in active_fields:
             try:
-                field_index = self.fields.index(field)
+                field_index = fields.index(field)
                 # Enable field in mask
                 mask[field_index] = not pre_value
             except ValueError:
