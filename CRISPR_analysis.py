@@ -35,27 +35,44 @@ medianRatioNormalization(df, dm)
 
 # Exploratory analysis on time sequence data
 avg_results,best_groups, best_values = timeSequenceGroups(df,dm)
-exp_col = {}
 
-
+# My results on election
+first_col = {}
 for column in list(best_groups):
-    exp_col[column] = best_groups[column].value_counts().index[0]
-    # Inspect Data
-    print(best_groups[column].value_counts())
+    first_col[column] = best_groups[column].value_counts().index[0]
 
-# print(exp_col)
-
+# Arthur's results on averaging
+avg_col = {}
 for k, v in avg_results.items():
-    print(k,': best time point combination is:',min(v, key = lambda x:x[0]))
+    #get the argmin of the min tuple
+    avg_col[k] = min(v, key = lambda x:x[0])[1]
 
 
+# You gotta choose motherfucker
+exp_col = avg_col
+
+# LinearRegression for the control group
 control_df = extractBestData(df,exp_col,'OCI2_MT')
-treat_df = extractBestData(df,exp_col,'OCI2_WT')
-
 model = empiricalRegression(control_df)
 
+# Predict adj_var and pval for the treatment
+results_df = pd.DataFrame(index = control_df.index)
+
+treat_df = extractBestData(df,exp_col,'OCI2_WT')
+
+
+results_df['control_mean'] = control_df.T.mean()
+
+model_df = results_df[results_df['control_mean'] > 0].copy()
+print('Ignoring zero counters... New size:', model_df.shape)
+
+model_df['control_var'] = control_df[results_df['control_mean'] > 0].T.var()
+model_df['treat_mean'] = treat_df[results_df['control_mean'] > 0].T.mean()
+
+model_df['adj_var'] = np.exp(model.predict(np.log(model_df['control_mean']).values.reshape(-1,1))[:,0]) + model_df['control_mean']
+
+
+calculatePValues(model_df.head(), 'treat_mean', 'control_mean', 'adj_var')
+
+
 #test = np.log(control_df.T.mean())
-
-
-
-

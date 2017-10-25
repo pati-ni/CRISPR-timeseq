@@ -4,7 +4,7 @@ import numpy as np
 from operator import itemgetter
 from itertools import compress, combinations, chain
 from numpy.linalg import lstsq
-from operations import *
+from operations import x_hat, _calculate_pvalues
 from ast import literal_eval
 from sklearn.linear_model import LinearRegression
 
@@ -33,17 +33,24 @@ def medianRatioNormalization(df,dm):
 
 def extractBestData(df, exp_col, key):
     exp_df = pd.DataFrame(index = df.index)
+    print('Extracting mean for:', exp_col[key])
     for index, samples in enumerate(re.split('->', exp_col[key])):
         # Will it blow ?? 3 , 2 , 1 ...
         exp_df['_'.join([key, str(index)])] = df[literal_eval(samples)].T.mean()
     return exp_df
 
+def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label):
+    length = df[test_mean_label].shape[0]
+    if not  length == df[model_mean_label].shape[0] == df[adj_var_label].shape[0]:
+        raise ValueError ('Vector length do not match')
+    return _calculate_pvalues(df[test_mean_label], df[model_mean_label], df[adj_var_label], length)
+
 def empiricalRegression(control_df, cutoff = 10):
 
     print('Regression analysis at the control:',list(control_df))
 
-    print('Dropping low count elements', (control_df.T.mean() < cutoff).sum() )
-    control_df = control_df.loc[control_df.T.mean() > cutoff]
+    # print('Dropping low count elements', (control_df.T.mean() < cutoff).sum() )
+    # control_df = control_df.loc[control_df.T.mean() > cutoff]
     
     regression_df = pd.DataFrame(index = control_df.index)
     regression_df['mean'] = control_df.T.mean()
