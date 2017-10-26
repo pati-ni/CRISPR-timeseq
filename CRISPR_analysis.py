@@ -33,23 +33,26 @@ for column in list(df):
 medianRatioNormalization(df, dm)
 
 
-# Exploratory analysis on time sequence data
-avg_results,best_groups, best_values = timeSequenceGroups(df,dm)
+# # Exploratory analysis on time sequence data
+# avg_results,best_groups, best_values = timeSequenceGroups(df,dm)
 
-# My results on election
-first_col = {}
-for column in list(best_groups):
-    first_col[column] = best_groups[column].value_counts().index[0]
+# # My results on election
+# first_col = {}
+# for column in list(best_groups):
+#     first_col[column] = best_groups[column].value_counts().index[0]
 
-# Arthur's results on averaging
-avg_col = {}
-for k, v in avg_results.items():
-    #get the argmin of the min tuple
-    avg_col[k] = min(v, key = lambda x:x[0])[1]
+# # Arthur's results on averaging
+# avg_col = {}
+# for k, v in avg_results.items():
+#     #get the argmin of the min tuple
+#     avg_col[k] = min(v, key = lambda x:x[0])[1]
 
 
 # You gotta choose motherfucker
+avg_col = {'OCI2_MT':"['OCI2_A_IDH1_MT_25'] -> ['OCI2_B_IDH1_MT_25'] ", 'OCI2_WT':"['OCI2_A_IDH1_WT_25'] -> ['OCI2_B_IDH1_WT_25']"}
 exp_col = avg_col
+
+
 
 # LinearRegression for the control group
 control_df = extractBestData(df,exp_col,'OCI2_MT')
@@ -72,7 +75,7 @@ model_df['treat_mean'] = treat_df[results_df['control_mean'] > 0].T.mean()
 model_df['adj_var'] = np.exp(model.predict(np.log(model_df['control_mean']).values.reshape(-1,1))[:,0]) + model_df['control_mean']
 
 
-calculatePValues(model_df.head(), 'treat_mean', 'control_mean', 'adj_var')
+pmf = calculatePValues(model_df.head(), 'treat_mean', 'control_mean', 'adj_var')
 
 
 #test = np.log(control_df.T.mean())

@@ -24,10 +24,13 @@ def _calculate_pvalues(test_mean, model_mean, est_var, length):
         results[i] = pvalue_est(test_mean[i], model_mean[i], est_var[i])
     return results
 
-# @numba.jit
+#@numba.jit
 def pvalue_est(x, mean, adj_var):
     # mean and var must be shame length
     p = 1 - (mean / adj_var)
     r = (mean * mean) / (adj_var - mean)
-    print(p,r,nbinom.cdf(x,r,p))
-    return nbinom.cdf(x,r,p)
+    print(x,r,p)
+    if x < mean:
+        return nbinom.cdf(x, r, p)
+    else:
+        return 1 - nbinom.cdf(x,r,p)
