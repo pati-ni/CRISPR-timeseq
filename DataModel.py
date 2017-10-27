@@ -43,7 +43,11 @@ def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label):
     length = df[test_mean_label].shape[0]
     if not  length == df[model_mean_label].shape[0] == df[adj_var_label].shape[0]:
         raise ValueError ('Vector length do not match')
-    return _calculate_pvalues(df[test_mean_label], df[model_mean_label], df[adj_var_label], length)
+    x = df[test_mean_label].values
+    p = (df[model_mean_label] / df[adj_var_label]).values
+    r = (df[model_mean_label] ** 2 / df[adj_var_label] - df[model_mean_label]).values
+    return _calculate_pvalues(x, r, p, df[model_mean_label], length)
+
 
 def empiricalRegression(control_df, cutoff = 10):
 
