@@ -10,12 +10,10 @@ def x_hat(counter_values):
         result[row] = np.exp(np.sum(np.log(counter_values[row] + 1)) / N)
     return result
 
+
 @numba.jit
-def _calculate_pvalues(x, r, p, mean, length):    
+def _calculate_pvalues(x, r, p, mean, length):
     results = np.empty(length)
     for i in range(length):
-        if x[i] < mean[i]:
-            results[i] =  nbinom.cdf(x[i], r[i], p[i])
-        else:
-            results[i] = 1 - nbinom.cdf(x[i], r[i], p[i])
+        results[i] =  nbinom.cdf(x[i], r[i], p[i])
     return results

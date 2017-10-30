@@ -74,7 +74,28 @@ model_df['treat_mean'] = treat_df[results_df['control_mean'] > 0].T.mean()
 model_df['adj_var'] = np.exp(model.predict(np.log(model_df['control_mean']).values.reshape(-1,1))[:,0]) + model_df['control_mean']
 
 
-model_df['pval'] = calculatePValues(model_df, 'treat_mean', 'control_mean', 'adj_var')
+model_df['pvalue_low'] = calculatePValues(model_df, 'treat_mean', 'control_mean', 'adj_var')
+#Just subtract to make the generate the values
+model_df['pvalue_high'] = 1 - model_df['pvalue_low']
+
+
+model_df['phigh_rank'] = model_df['pvalue_high'].rank(ascending = True)
+model_df['plow_rank'] = model_df['pvalue_low'].rank(ascending = True)
+
+model_df['geneID'] = seq_data_df.loc[model_df.index]['geneID']
+
+model_df['listID'] = 'dummy_list'
+
+
+model_df[model_df['pvalue_low'] < 0.2][['geneID', 'listID', 'pvalue_low']].to_csv('low.gene_example.txt', sep = '\t')
+
+model_df[model_df['pvalue_high'] < 0.2][['geneID', 'listID', 'pvalue_low']].to_csv('high.gene_example.txt', sep = '\t')
+
+
+# model_df[['geneID','dummy','pvalue_high']].to_csv('high.gene_example.txt', header = '\t')
+
+
+
 
 
 #test = np.log(control_df.T.mean())

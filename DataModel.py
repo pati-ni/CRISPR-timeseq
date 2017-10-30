@@ -27,7 +27,7 @@ def medianRatioNormalization(df,dm):
     # Insert temporarily with the key
     df[new_key] = x_hat(df[samples].values)
     for sample in samples:
-        df[sample] = df[sample] / (df[sample] / df[new_key]).median()     
+        df[sample] = df[sample] / (df[sample] / df[new_key]).median()
     df.drop(new_key, axis = 1, inplace = True)
 
 
@@ -39,14 +39,17 @@ def extractBestData(df, exp_col, key):
         exp_df['_'.join([key, str(index)])] = df[literal_eval(samples)].T.mean()
     return exp_df
 
-def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label):
+def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label, low_tail = True):
     length = df[test_mean_label].shape[0]
     if not  length == df[model_mean_label].shape[0] == df[adj_var_label].shape[0]:
         raise ValueError ('Vector length do not match')
     x = df[test_mean_label].values
     p = (df[model_mean_label] / df[adj_var_label]).values
-    r = (df[model_mean_label] ** 2 / df[adj_var_label] - df[model_mean_label]).values
-    return _calculate_pvalues(x, r, p, df[model_mean_label], length)
+    r = (df[model_mean_label] ** 2 / (df[adj_var_label] - df[model_mean_label])).values
+    if low_tail:
+        return _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
+    else:
+        return 1 - _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
 
 
 def empiricalRegression(control_df, cutoff = 10):
