@@ -33,8 +33,11 @@ for column in list(df):
 medianRatioNormalization(df, dm)
 
 
+
+# Comparisons in the same cell line
+
 # Exploratory analysis on time sequence data
-avg_results,best_groups, best_values = timeSequenceGroups(df,dm)
+min_var, avg_results, best_groups, best_values = timeSequenceGroups(df,dm)
 
 # My results on election
 first_col = {}
@@ -47,55 +50,68 @@ for k, v in avg_results.items():
     #get the argmin of the min tuple
     avg_col[k] = min(v, key = lambda x:x[0])[1]
 
+min_var_col = {}
+for k, v in min_var.items():
+    min_var_col[k] = min(v, key = lambda x:x[0])[1]
 
 # You gotta choose motherfucker
-exp_col = avg_col
+exp_col = min_var_col
+
+# Use control as t0
+dm.getT0samples()
+
+
+# # LinearRegression for the control group
+# control_df = extractBestData(df,exp_col,'OCI2_MT')
+# model = empiricalRegression(control_df)
+
+# # Predict adj_var and pval for the treatment
+# results_df = pd.DataFrame(index = control_df.index)
+
+# treat_df = extractBestData(df,exp_col,'OCI2_WT')
+
+
+# results_df['control_mean'] = control_df.T.mean()
+
+# model_df = results_df[results_df['control_mean'] > 0].copy()
+# print('Ignoring zero counters... New size:', model_df.shape)
+
+# model_df['control_var'] = control_df[results_df['control_mean'] > 0].T.var()
+# model_df['treat_mean'] = treat_df[results_df['control_mean'] > 0].T.mean()
+
+# model_df['adj_var'] = np.exp(model.predict(np.log(model_df['control_mean']).values.reshape(-1,1))[:,0]) + model_df['control_mean']
+
+# #error_lr = varianceErrorRegression(model_df['control_var'], model_df['adj_var'])
+# #model_df['corrected_variance'] = error_lr.predict(model_df['control_var'].values.reshape(-1,1))[:,0] + model_df['control_var']
+
+
+# model_df['pvalue_low'] = calculatePValues(model_df, 'treat_mean', 'control_mean', 'adj_var')
+# #Just subtract to make the generate the values
+# model_df['pvalue_high'] = 1 - model_df['pvalue_low']
+
+
+# model_df['phigh_rank'] = model_df['pvalue_high'].rank(ascending = True)
+# model_df['plow_rank'] = model_df['pvalue_low'].rank(ascending = True)
+
+# model_df['geneID'] = seq_data_df.loc[model_df.index]['geneID']
+
+# model_df['listID'] = 'dummy_list'
+
+
+# model_df[model_df['pvalue_low'] < 0.1][['geneID', 'listID', 'pvalue_low']].to_csv('low.gene_example.txt', sep = '\t')
+
+# model_df[model_df['pvalue_high'] < 0.1][['geneID', 'listID', 'pvalue_high']].to_csv('high.gene_example.txt', sep = '\t')
+
+
+# # model_df[['geneID','dummy','pvalue_high']].to_csv('high.gene_example.txt', header = '\t')
+
+
+# #low_df = model_df['geneID'].isin(model_df[model_df['pvalue_low'] < 0.05].groupby('geneID').count().index)
+# #high_df = model_df['geneID'].isin(model_df[model_df['pvalue_high'] < 0.05].groupby('geneID').count().index)
 
 
 
-# LinearRegression for the control group
-control_df = extractBestData(df,exp_col,'OCI2_MT')
-model = empiricalRegression(control_df)
-
-# Predict adj_var and pval for the treatment
-results_df = pd.DataFrame(index = control_df.index)
-
-treat_df = extractBestData(df,exp_col,'OCI2_WT')
-
-
-results_df['control_mean'] = control_df.T.mean()
-
-model_df = results_df[results_df['control_mean'] > 0].copy()
-print('Ignoring zero counters... New size:', model_df.shape)
-
-model_df['control_var'] = control_df[results_df['control_mean'] > 0].T.var()
-model_df['treat_mean'] = treat_df[results_df['control_mean'] > 0].T.mean()
-
-model_df['adj_var'] = np.exp(model.predict(np.log(model_df['control_mean']).values.reshape(-1,1))[:,0]) + model_df['control_mean']
-
-
-model_df['pvalue_low'] = calculatePValues(model_df, 'treat_mean', 'control_mean', 'adj_var')
-#Just subtract to make the generate the values
-model_df['pvalue_high'] = 1 - model_df['pvalue_low']
-
-
-model_df['phigh_rank'] = model_df['pvalue_high'].rank(ascending = True)
-model_df['plow_rank'] = model_df['pvalue_low'].rank(ascending = True)
-
-model_df['geneID'] = seq_data_df.loc[model_df.index]['geneID']
-
-model_df['listID'] = 'dummy_list'
-
-
-model_df[model_df['pvalue_low'] < 0.2][['geneID', 'listID', 'pvalue_low']].to_csv('low.gene_example.txt', sep = '\t')
-
-model_df[model_df['pvalue_high'] < 0.2][['geneID', 'listID', 'pvalue_low']].to_csv('high.gene_example.txt', sep = '\t')
-
-
-# model_df[['geneID','dummy','pvalue_high']].to_csv('high.gene_example.txt', header = '\t')
 
 
 
-
-
-#test = np.log(control_df.T.mean())
+# #test = np.log(control_df.T.mean())

@@ -31,6 +31,16 @@ def medianRatioNormalization(df,dm):
     df.drop(new_key, axis = 1, inplace = True)
 
 
+def analyzeData(df, control, treat):
+    # LinearRegression for the control group
+    model = empiricalRegression(df[control])
+    
+    results_df = pd.DataFrame(index = control_df.index)
+    results_df['control_mean'] = df[control].T.mean()
+    
+    
+    
+
 def extractBestData(df, exp_col, key):
     exp_df = pd.DataFrame(index = df.index)
     print('Extracting mean for:', exp_col[key])
@@ -50,6 +60,16 @@ def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label, low_t
         return _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
     else:
         return 1 - _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
+
+def varianceErrorRegression(real_var, adj_var):
+    lr = LinearRegression(n_jobs = -1)
+    x = real_var.values.reshape(-1,1)
+    y = (adj_var - real_var).values.reshape(-1,1)
+    lr.fit(x, y)
+    error = lr.score(x, y)
+    print('Adjusted variance regression error:', error)
+    return lr
+    
 
 
 def empiricalRegression(control_df, cutoff = 10):
@@ -76,12 +96,14 @@ def empiricalRegression(control_df, cutoff = 10):
     print('Regression run, regression score error:',error)
     return lr
 
-    
+
+
 # Returns a argmin histogram of the samples combinations with minimized mean deviation
 # Each count represent a guide RNA
 def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
     print('Rating Samples')
     test_avg = {}
+    min_var = {}
     # print('Array shape:', df.shape)
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
     #print('Finding best sequence based on:',df.shape,'values')
@@ -114,26 +136,36 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
             gid = '->'.join(gid)
             
             # mad: mean absolute deviation
-            mean_df['mad'] = mean_df.T.mad()
+            mad = mean_df.T.mad()
             
-            #Arthur's case
+            # Arthur's case
             if not group_id in test_avg:
                 test_avg[group_id] = []
-            test_avg[group_id].append((mean_df['mad'].mean(),gid))
-
+                min_var[group_id] = []
+                
+                
+            test_avg[group_id].append((mad.mean(),gid))
+            
+            # Custom metric to minimize impact for the mean variance modeling
+            variance = np.var(np.log(mean_df.T.mean()) - np.log(mean_df.T.var()))
+            min_var[group_id].append((variance, gid))
+            
+            
             if group_id in compare_df.columns:
                 # key already present compare existing data
-                better_mean = compare_df[group_id] > mean_df['mad']
+                better_mean = compare_df[group_id] > mad
                 #print(unique_set,':',better_mean.sum())
                 arg_compare_df[group_id].loc[better_mean] = gid # alias for str(unique_set)
-                compare_df[group_id].loc[better_mean] = mean_df['mad']
+                compare_df[group_id].loc[better_mean] = mad
             else:
                 # previous group not present
                 # set min and argmin
-                compare_df[group_id] = mean_df['mad']
+                compare_df[group_id] = mad
                 arg_compare_df[group_id] = gid
 
-    return test_avg, arg_compare_df, compare_df
+    return min_var, test_avg, arg_compare_df, compare_df
+
+ 
 
 
 
@@ -168,6 +200,19 @@ class DataModel:
                     self.data_model[attribute][meta_val] = {}
                 self.data_model[attribute][meta_val][delim.join(col_meta[:index] + col_meta[index+1:])] = column_name
 
+    # generate pairs of timesamples on day 0
+    def getT0samples(self):
+        t0 = str(sorted(map(int, self.data_model['time'].keys()))[0])
+        print('Found minimum timepoint,', t0)
+
+        unique_set0 = set(self.data_model['time'][t0].values())
+
+        for key in self.data_model['time'].keys():
+            if t0 == key:
+                continue
+            ts_set = set(self.data_model['time'][key].values()) | unique_set0
+            for group_id, unique_set in self.splitNestedData(ts_set, ['cell_type','type']):
+                yield list(zip(*list(self.splitNestedData(unique_set,['replicant']))))[1]
 
     def calculate_timestamps(self, df):
         timestamps = []
