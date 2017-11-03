@@ -30,7 +30,7 @@ for column in list(df):
 
 
 # Normalize Data
-medianRatioNormalization(df, dm)
+medianRatioNormalization(df)
 
 
 
@@ -58,18 +58,25 @@ for k, v in min_var.items():
 exp_col = min_var_col
 
 # Use control as t0
-dm.getT0samples()
+for group in dm.getT0samples():
+    # filter if there are not enough replica data
+    if list(filter(lambda x : len(x) < 2, list(group[-1]))):
+        print(group,'not enough replicas')
+        continue
+    print('Comparing,', group)
+    
+    
+    
 
 
-# # LinearRegression for the control group
-# control_df = extractBestData(df,exp_col,'OCI2_MT')
-# model = empiricalRegression(control_df)
+control_df = extractBestData(df,exp_col,'OCI2_MT')
+treat_df = extractBestData(df,exp_col,'OCI2_WT')
 
-# # Predict adj_var and pval for the treatment
+# LinearRegression for the control group
+model = empiricalRegression(control_df)
+
+# Predict adj_var and pval for the treatment
 # results_df = pd.DataFrame(index = control_df.index)
-
-# treat_df = extractBestData(df,exp_col,'OCI2_WT')
-
 
 # results_df['control_mean'] = control_df.T.mean()
 

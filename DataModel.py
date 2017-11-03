@@ -7,10 +7,10 @@ from numpy.linalg import lstsq
 from operations import x_hat, _calculate_pvalues
 from ast import literal_eval
 from sklearn.linear_model import LinearRegression
-
+from operator import itemgetter
 # TODO: use logging module
 
-def medianRatioNormalization(df,dm):
+def medianRatioNormalization(df):
     print('Normalizing data')
     # Uncomment to perform medianRatioNormalization in groups
     # for key,group_data in dm.iterateData('replicant'):
@@ -30,15 +30,24 @@ def medianRatioNormalization(df,dm):
         df[sample] = df[sample] / (df[sample] / df[new_key]).median()
     df.drop(new_key, axis = 1, inplace = True)
 
-
-def analyzeData(df, control, treat):
+    
+def analyzeData(control_df, treat_df):
     # LinearRegression for the control group
-    model = empiricalRegression(df[control])
-    
+    model = empiricalRegression(control_df)
+
     results_df = pd.DataFrame(index = control_df.index)
-    results_df['control_mean'] = df[control].T.mean()
+    # Deal with zero counters, yeah right
+    control_df += 1
+    treat_df += 1
+    results_df['control_mean'] = control_df.T.mean()
+    results_df['treat_mean'] = treat_df.T.mean()
+    x = results_df['control_mean'].values.reshape(-1,1)
+    results_df['adj_var'] = np.exp(model.predict(np.log(x))[:, 0]) + results_df['control_mean']
+    results_df['pvalue_low'] = calculatePValues(results_df, 'treat_mean', 'control_mean', 'adj_var')
+    return results_df
     
-    
+
+
     
 
 def extractBestData(df, exp_col, key):
@@ -212,7 +221,9 @@ class DataModel:
                 continue
             ts_set = set(self.data_model['time'][key].values()) | unique_set0
             for group_id, unique_set in self.splitNestedData(ts_set, ['cell_type','type']):
-                yield list(zip(*list(self.splitNestedData(unique_set,['replicant']))))[1]
+                a = self.splitNestedData(unique_set, ['time'])
+                yield group_id, list(filter(None, map(itemgetter(1), a )))
+
 
     def calculate_timestamps(self, df):
         timestamps = []
@@ -241,9 +252,10 @@ class DataModel:
 
     # Uses the data model and a set of desired fields
     # to produce groups of samples
-    def splitNestedData(self, samples, fields, original_fields = None):
+    def splitNestedData(self, samples, fields, original_fields = None, null_yield = True):
         if not samples:
-            yield '', samples
+            if null_yield:
+                yield '', samples
             raise StopIteration
             #raise ValueError('No samples available')
 
