@@ -8,10 +8,13 @@ from operations import x_hat, _calculate_pvalues
 from ast import literal_eval
 from sklearn.linear_model import LinearRegression
 from operator import itemgetter
+from subprocess import call
+import os
+
 # TODO: use logging module
 
-def medianRatioNormalization(df):
-    print('Normalizing data')
+def medianRatioNormalization(df, samples = None):
+    # print('Normalizing data')
     # Uncomment to perform medianRatioNormalization in groups
     # for key,group_data in dm.iterateData('replicant'):
     #     for key,group_data in dm.iterateData('time'):
@@ -20,15 +23,25 @@ def medianRatioNormalization(df):
     # new_key = '_'.join([key,'x'])
 
     # Comment these
-    samples = list(df)
+    if samples is None:
+        samples = list(df)
+        # work directly on dataframe
+        mod_df = df
+    else:
+        mod_df = df[samples].copy()
+    
     new_key = 'xi'
     # until here 
 
     # Insert temporarily with the key
-    df[new_key] = x_hat(df[samples].values)
+    mod_df[new_key] = x_hat(mod_df[samples].values)
     for sample in samples:
-        df[sample] = df[sample] / (df[sample] / df[new_key]).median()
-    df.drop(new_key, axis = 1, inplace = True)
+        mod_df[sample] = mod_df[sample] / (mod_df[sample] / mod_df[new_key]).median()
+    mod_df.drop(new_key, axis = 1, inplace = True)
+
+    if not (samples is None):
+        for col in list(mod_df):
+            df[col] = mod_df[col]
 
     
 def analyzeData(control_df, treat_df):
@@ -65,10 +78,11 @@ def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label, low_t
     x = df[test_mean_label].values
     p = (df[model_mean_label] / df[adj_var_label]).values
     r = (df[model_mean_label] ** 2 / (df[adj_var_label] - df[model_mean_label])).values
-    if low_tail:
-        return _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
-    else:
-        return 1 - _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
+    #print(x,r,p)
+    # if low_tail:
+    return _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
+    # else:
+        # return 1 - _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
 
 def varianceErrorRegression(real_var, adj_var):
     lr = LinearRegression(n_jobs = -1)
@@ -175,6 +189,19 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
     return min_var, test_avg, arg_compare_df, compare_df
 
  
+
+def rra_analysis(df, gene_df, prob_cutoff, group_id, path_prefix = './'):
+    input_file = path_prefix + group_id + '-low.rra_input.txt'
+    output_file = path_prefix + group_id + '-high.rra_output.txt'
+
+    df['geneID'] = gene_df.loc[df.index]['geneID']
+    df['listID'] = 'dummy_list'
+
+    df[['geneID', 'listID', 'pvalue_low']].to_csv(input_file, sep = '\t')
+    call([os.path.expanduser("~/src_repos/rra/RRA"),'-i', input_file, '-o', output_file])
+    
+    return pd.read_csv(output_file, sep='\t')
+
 
 
 

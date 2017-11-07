@@ -11,6 +11,7 @@ def x_hat(counter_values):
     return result
 
 
+
 @numba.jit
 def _calculate_pvalues(x, r, p, mean, length):
     results = np.empty(length)
