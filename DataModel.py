@@ -1,4 +1,4 @@
-import re
+import re 
 import pandas as pd
 import numpy as np
 from operator import itemgetter
@@ -92,7 +92,32 @@ def varianceErrorRegression(real_var, adj_var):
     error = lr.score(x, y)
     print('Adjusted variance regression error:', error)
     return lr
+
+def regression(df):
+
+    print('Regression analysis at:', list(df))
+
+    # print('Dropping low count elements', (control_df.T.mean() < cutoff).sum() )
+    # control_df = control_df.loc[control_df.T.mean() > cutoff]
     
+    regression_df = pd.DataFrame(index = control_df.index)
+    regression_df['mean'] = control_df.T.mean()
+    
+    #Keep only overdispersed data, model limitation (Mageck)
+    print('Keeping only overdispersed data...', (regression_df['mean'] < control_df.T.var()).sum())
+    regression_df = regression_df.loc[regression_df['mean'] < control_df.T.var()]
+    
+
+    regression_df['var_dif'] = np.log(control_df.T.var() - regression_df['mean'])
+    regression_df['mean'] = np.log(regression_df['mean'])
+
+    lr = LinearRegression(n_jobs = -1)
+    lr.fit(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
+    error = lr.score(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
+    print('Regression run, regression score error:',error)
+    return lr
+
+
 
 
 def empiricalRegression(control_df, cutoff = 10):
@@ -190,17 +215,17 @@ def timeSequenceGroups(df, dm, fields = ['cell_type', 'type']):
 
  
 
-def rra_analysis(df, gene_df, prob_cutoff, group_id, path_prefix = './'):
+def rra_analysis(df, gene_df, prob_cutoff, group_id, path_prefix = './', p_tag = 'pvalue_low'):
     input_file = path_prefix + group_id + '-low.rra_input.txt'
     output_file = path_prefix + group_id + '-high.rra_output.txt'
 
     df['geneID'] = gene_df.loc[df.index]['geneID']
     df['listID'] = 'dummy_list'
-
-    df[['geneID', 'listID', 'pvalue_low']].to_csv(input_file, sep = '\t')
+    rra_df = df[['geneID', 'listID', p_tag]]
+    rra_df.to_csv(input_file, sep = '\t')
     call([os.path.expanduser("~/src_repos/rra/RRA"),'-i', input_file, '-o', output_file])
     
-    return pd.read_csv(output_file, sep='\t')
+    return pd.read_csv(output_file, index_col = 'group_id', sep='\t')
 
 
 
