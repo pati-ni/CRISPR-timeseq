@@ -60,7 +60,54 @@ def analyzeData(control_df, treat_df):
     return results_df
     
 
+def analyzeDataNonEmpirical(control_df, treat_df):
 
+    if control_df.shape[0] != treat_df.shape[0]:
+        raise ValueError ('Dataframes have different index values')
+
+    from sklearn.neighbors import NearestNeighbors
+    print(list(control_df), list(treat_df))
+
+    meta_df = pd.DataFrame(index = control_df.index)
+    meta_df['control_mean'] = control_df.T.mean()
+    meta_df['control_var'] = control_df.T.var()
+    meta_df['treat_mean'] = treat_df.T.mean()
+    meta_df['treat_var'] = treat_df.T.var()
+
+    samples_dimension = control_df.shape[1]
+    
+    test = control_df.values.reshape(-1, samples_dimension)
+    
+    # Deal with underdispersed data
+    overdispersed_data = control_df[meta_df['control_mean'] < meta_df['control_var']].copy()
+    overdispersed_df = pd.DataFrame(index = overdispersed_data.index)
+    overdispersed_df['control_mean'] = overdispersed_data.T.mean()
+    overdispersed_df['control_var'] = overdispersed_data.T.var()
+
+    train = overdispersed_data.values.reshape(-1, samples_dimension)
+    print('Found', len(control_df) - len(overdispersed_data), 'underdispersed samples')
+    print('Train shape', train.shape,'Test shape',test.shape)
+
+    nbrs = NearestNeighbors(n_neighbors = 10, algorithm = 'ball_tree').fit(train)
+    
+    distances, neighbors = nbrs.kneighbors(test)
+    
+    adj_var = np.empty(shape=(treat_df.shape[0],))
+    for i, indices in enumerate(neighbors):
+        #print(i, indices[i])
+        lr = LinearRegression(n_jobs = -1)
+        X = overdispersed_df.iloc[indices]['control_mean'].values.reshape(-1,1)
+        y = overdispersed_df.iloc[indices]['control_var'].values.reshape(-1,1)
+        # lr = fit(np.log(X), np.log(y))
+        lr.fit(np.log(X), np.log(y - X))
+        # error = lr.score(X, y)
+        adj_var[i] = np.exp(lr.predict(np.log(meta_df.iloc[i]['control_mean']))) + meta_df.iloc[i]['control_mean']
+        if adj_var[i]  < meta_df.iloc[i]['control_mean']:
+            print(list(zip(indices, distances[i])))
+    
+    meta_df['adj_var'] = adj_var
+    meta_df['pvalue_low'] = calculatePValues(meta_df, 'treat_mean', 'control_mean', 'adj_var')
+    return meta_df
     
 
 def extractBestData(df, exp_col, key):
@@ -78,11 +125,11 @@ def calculatePValues(df, test_mean_label, model_mean_label, adj_var_label, low_t
     x = df[test_mean_label].values
     p = (df[model_mean_label] / df[adj_var_label]).values
     r = (df[model_mean_label] ** 2 / (df[adj_var_label] - df[model_mean_label])).values
-    #print(x,r,p)
     # if low_tail:
     return _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
     # else:
         # return 1 - _calculate_pvalues(x, r, p, df[model_mean_label].values, length)
+
 
 def varianceErrorRegression(real_var, adj_var):
     lr = LinearRegression(n_jobs = -1)
@@ -93,28 +140,22 @@ def varianceErrorRegression(real_var, adj_var):
     print('Adjusted variance regression error:', error)
     return lr
 
-def regression(df):
+def meanVarianceRegression(df):
 
     print('Regression analysis at:', list(df))
 
     # print('Dropping low count elements', (control_df.T.mean() < cutoff).sum() )
     # control_df = control_df.loc[control_df.T.mean() > cutoff]
     
-    regression_df = pd.DataFrame(index = control_df.index)
-    regression_df['mean'] = control_df.T.mean()
-    
-    #Keep only overdispersed data, model limitation (Mageck)
-    print('Keeping only overdispersed data...', (regression_df['mean'] < control_df.T.var()).sum())
-    regression_df = regression_df.loc[regression_df['mean'] < control_df.T.var()]
-    
+    regression_df = pd.DataFrame(index = df.index)
 
-    regression_df['var_dif'] = np.log(control_df.T.var() - regression_df['mean'])
-    regression_df['mean'] = np.log(regression_df['mean'])
+    regression_df['var_dif'] = np.log(df.T.var())
+    regression_df['mean'] = np.log(control_df.T.mean())
 
     lr = LinearRegression(n_jobs = -1)
     lr.fit(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
     error = lr.score(regression_df['mean'].values.reshape(-1,1), regression_df['var_dif'].values.reshape(-1,1))
-    print('Regression run, regression score error:',error)
+    print('Mean Variance regression converged, regression score error:',error)
     return lr
 
 
@@ -133,7 +174,6 @@ def empiricalRegression(control_df, cutoff = 10):
     #Keep only overdispersed data, model limitation (Mageck)
     print('Keeping only overdispersed data...', (regression_df['mean'] < control_df.T.var()).sum())
     regression_df = regression_df.loc[regression_df['mean'] < control_df.T.var()]
-    
 
     regression_df['var_dif'] = np.log(control_df.T.var() - regression_df['mean'])
     regression_df['mean'] = np.log(regression_df['mean'])
