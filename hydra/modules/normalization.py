@@ -15,19 +15,6 @@ def x_hat(counter_values):
     return result
 
 
-def medianRatioNormalization(df, dm):
-    samples = list(df)
-    new_key = 'xi'
-    # Insert temporarily with the key
-    df[new_key] = x_hat(df[samples].values)
-    for sample in samples:
-        df[sample] = df[sample] / (df[sample] / df[new_key]).median()
-    df.drop(new_key, axis = 1, inplace = True)
-
-
-
-def main(filename):
-    pass
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = "Median ratio normalization for ascii files")

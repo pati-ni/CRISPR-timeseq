@@ -18,3 +18,22 @@ def _calculate_pvalues(x, r, p, mean, length):
     for i in range(length):
         results[i] =  nbinom.cdf(x[i], r[i], p[i])
     return results
+
+
+
+def medianRatioNormalization(df, samples = None):
+    if samples is None:
+        samples = list(df)
+        # work directly on dataframe
+        mod_df = df
+    else:
+        mod_df = df[samples].copy()
+
+    # Insert temporarily with the key
+    geom_mean = x_hat(mod_df[samples].values)
+    for sample in samples:
+        mod_df[sample] = mod_df[sample] / (mod_df[sample] / geom_mean).median()
+
+    if not (samples is None):
+        for col in list(mod_df):
+            df[col] = mod_df[col]
