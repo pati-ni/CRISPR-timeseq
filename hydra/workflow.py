@@ -33,14 +33,14 @@ class Workflow:
                     self.data_model[attribute][meta_val] = {}
                 self.data_model[attribute][meta_val][delim.join(col_meta[:index] + col_meta[index + 1:])] = column_name
 
-    def analyzeExperiment(self, method, df, gene_df):
-        for key, index in dm.iterateData('cell_line'):
-            for group, samples in dm.splitNestedData(index.values(), ['type']):
+    def analyzeExperiment(self, method, df, gene_df, cell_group = ['cell_line'], dif_id = 'type'):
+        for key, index in dm.iterateData(cell_group):
+            # Control treat id
+            for group, samples in dm.splitNestedData(index.values(), [dif_id]):
                 if control_tag == group:
                     control_group = df[list(samples)]
                 else:
                     treat_group = df[list(samples)]
-
                 self.coreAnalysis(method, control_group, treat_group, key)
 
                 
