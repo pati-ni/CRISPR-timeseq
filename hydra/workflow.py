@@ -2,21 +2,31 @@ import re
 import pandas as pd
 import numpy as np
 from operator import itemgetter
+from hydra.operations import medianRatioNormalization
 from itertools import compress, combinations, chain
 from ast import literal_eval
-from operator import itemgetter
 
 # TODO: use logging module
-    
+"""
+workflow.py 
+
+Different types of experiment require different metadata data model structures.
+For example, when we are dealing with timepoint sample data we are dealing with another dimension of analysis,
+which somehow needs to be reduced.
+
+This file contains different workflows for different cases
+"""
+
 # Workflow with multiple replicas separated in control and treatment
 class Workflow:
     data_model = {}
     exp_results = {}
-    def __init__(self, df, fields, delim = '_'):
+    def __init__(self, df, fields, control_tag, delim = '_'):
         df_columns = list(df)
         self.fields = fields[:]
         self.initial_fields = fields[:]
         self.delim = delim
+        self.control_tag = control_tag
 
         # Initialize with empty dict for attributes our model
         for attribute in self.fields:
@@ -33,22 +43,32 @@ class Workflow:
                     self.data_model[attribute][meta_val] = {}
                 self.data_model[attribute][meta_val][delim.join(col_meta[:index] + col_meta[index + 1:])] = column_name
 
-    def analyzeExperiment(self, method, df, gene_df, cell_group = ['cell_line'], dif_id = 'type'):
-        for key, index in dm.iterateData(cell_group):
+    def analyzeExperiment(self, method, df, gene_df, cell_group = 'cell_line', ctrl_treat_id = 'type'):
+        
+        if method.requires_normalization:
+                self.normalize(df)
+
+        for key, index in self.iterateData(cell_group):
             # Control treat id
-            for group, samples in dm.splitNestedData(index.values(), [dif_id]):
-                if control_tag == group:
+            for group, samples in self.splitNestedData(index.values(), [ctrl_treat_id]):
+                if self.control_tag == group:
                     control_group = df[list(samples)]
                 else:
                     treat_group = df[list(samples)]
-                self.coreAnalysis(method, control_group, treat_group, key)
+
+            # Copy dataframes to keep original counters in tact
+            self.coreAnalysis(method, control_group.copy() + 1, treat_group.copy() + 1, gene_df, key)
 
                 
     def coreAnalysis(self, method, control_df, treat_df, gene_df, key):
+        print('Control:', list(control_df))
+        print('Treat:', list(treat_df))
+
         results_df = method.analyzeData(control_df, treat_df)
+        results_df['pvalue_high'] = 1 - results_df['pvalue_low']
+
         method.exportGuideRNAData(results_df)
         gene_info = method.rra(results_df, gene_df, key)
-                
         # Meta analysis
         # if not dfs[key]:
             # dfs[key] = {}
@@ -124,10 +144,6 @@ class Workflow:
         reduced_mask[data_index] = 0
         
         indexes = getKeys(group.keys(),attribute)
-
-        
-        else:
-            indexes = list(group.keys())
         
         base_keys = group[indexes[0]].keys()
         for key in base_keys:
@@ -177,6 +193,12 @@ class Workflow:
         # Modify the current data model
         self.fields.remove(data_name)
         return new_dm
+
+    def normalize(self, df, *args):
+        for key, index in self.iterateData('cell_line'):
+            samples = list(index.values())
+            print('Median Ratio Normalization', samples)
+            medianRatioNormalization(df, samples)
     
 
 # Use this to generate pairs
@@ -196,11 +218,11 @@ def extractBestData(df, exp_col, key):
 
 class TimeSequenceWorkflow(Workflow):
 
-    def __init__(self, df, fields, *args):
-        Workflow.__init__(df, fields, *args)
+    def __init__(self, df, fields, control_tag, *args):
+        
         if not ('time' in fields):
             raise('This does not look like time sequence meta data')
-
+        super().__init__(df, fields, control_tag)
     
     # generate pairs of timesamples on day 0
     def getT0samples(self):
@@ -235,9 +257,9 @@ class TimeSequenceWorkflow(Workflow):
         compare_df = pd.DataFrame(index = df.index)
         arg_compare_df = pd.DataFrame(index = df.index)
 
-        for time_set in all_combinations(dict(dm.iterateData('time')).values()):
+        for time_set in all_combinations(dict(self.iterateData('time')).values()):
             time_samples = list(chain.from_iterable(ts.values() for ts in time_set))
-            for group_id, unique_set in dm.splitNestedData(time_samples, fields):
+            for group_id, unique_set in self.splitNestedData(time_samples, fields):
                 # If we do not have more than 2 replicants, skip the sample
                 if len(unique_set) < 2:
                     print('warn: Skipping', unique_set,', no replicant available')
@@ -247,7 +269,7 @@ class TimeSequenceWorkflow(Workflow):
 
                 # the id of argmin
                 gid = []
-                for i, (_, replicant) in enumerate(dm.splitNestedData(unique_set, ['replicant'])):
+                for i, (_, replicant) in enumerate(self.splitNestedData(unique_set, ['replicant'])):
                     # if replicant not available, continue
                     if _ == '':
                         continue

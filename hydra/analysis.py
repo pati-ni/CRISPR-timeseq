@@ -3,9 +3,13 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from subprocess import call
-from operations import medianRatioNormalization
+from hydra.operations import _calculate_pvalues
+
 import os
 import pathlib
+
+# Contains all possible analysis methods for a set of samples
+
 
 
 class Analysis:
@@ -29,9 +33,9 @@ class Analysis:
 
     def rra(self, df, gene_df, group_id):
         dfs = []
-        if dropout:
+        if self.dropout:
             dfs.append(self.rra_analysis(df, gene_df, group_id, self.p_tag_low, dropout = True))
-        if enrichment:
+        if self.enrichment:
             dfs.append(self.rra_analysis(df, gene_df, group_id, self.p_tag_high, dropout = False))
         return dfs
         
@@ -44,8 +48,8 @@ class Analysis:
             kw = 'high'
             kw2 = 'pos'
 
-        input_file = path_prefix + group_id + '-' + kw + '.rra_input.txt'
-        output_file = path_prefix + group_id + '-'+ kw + '.rra_output.txt'
+        input_file = self.path + group_id + '-' + kw + '.rra_input.txt'
+        output_file = self.path + group_id + '-'+ kw + '.rra_output.txt'
 
         df['geneID'] = gene_df.loc[df.index]['geneID']
         df['listID'] = 'dummy_list'
@@ -66,9 +70,6 @@ class Analysis:
         results_df.to_csv(self.path + group_id + '.gene_summary.txt')
         return results_df
 
-    def normalize(self, df, *args):
-        medianRatioNormalization(df, *args)
-
 
 class DESeq2(Analysis):
 
@@ -80,7 +81,7 @@ class DESeq2(Analysis):
         get_ipython().run_cell_magic('R', '', 
                 """
                 library('DESeq2')\n
-                rpy2_deseq2 <- function(df,sample_types,types) {\n    
+                rpy2_deseq2 <- function(df,sample_types,ctrl_treat) {\n    
                     sampleCondition <- unlist(sample_type)\n    
                     df <- data.frame(experiment_df)\n    
                     ddsHTSeq <- DESeqDataSetFromMatrix(df, DataFrame(sampleCondition), ~ sampleCondition)\n    
@@ -88,29 +89,38 @@ class DESeq2(Analysis):
                     dds<-DESeq(ddsHTSeq)\n    
                     res<-results(dds)\n    
                     res<-res[order(res$padj),]\n
-                    deseq_df <- data.frame(res)\n    
-                    return(deseq_df)\n}
+                    return(data.frame(res))\n
+                }\n
                 """)
 
         self.name = 'deseq'
-        super.__init__(path)
+        self.requires_normalization = False
+        super().__init__(path)
 
 
     def analyzeData(self, control_df, treat_df):
         experiment_df = pd.concat([control_df,treat_df], axis = 1)
         sample_type = [len(list(control_df)) * ["control"] ] + [len(list(treat_df)) * ["treat"] ]
         types = ["control", "treat"]
-        get_ipython().run_line_magic('R', '-i experiment_df,sample_type,types')
-        get_ipython().run_line_magic('R', 'deseq_df = rpy2_deseq2(experiment_df, sample_type, types)')
-        get_ipython().run_line_magic('R', '-o deseq_df')
 
-        return deseq_df
+        get_ipython().run_line_magic('R', '-i experiment_df,sample_type,types')
+        get_ipython().run_line_magic('R', 'deseq_df <- rpy2_deseq2(experiment_df, sample_type, types)')
+        get_ipython().run_line_magic('R', '-o deseq_df')
+        ret_df = get_ipython().user_ns['deseq_df']
+        ret_df.rename(columns={'padj': 'pvalue_low' },inplace = True)
+        ret_df.index.name = 'libID'
+        return ret_df
 
 
 class MeanVarianceEmpirical(Analysis):
 
     def __init__(self, *args):
-        self.name = 'meanvar'
+        
+        # Check if overriden by subclass
+        if not hasattr(self, 'name'):
+            self.name = 'meanvar'
+
+        self.requires_normalization = True
         super().__init__(*args)
 
     def meanVarianceRegression(self, df):
@@ -151,7 +161,7 @@ class MeanVarianceEmpirical(Analysis):
 
     def analyzeData(self, control_df, treat_df):
         # LinearRegression for the control group
-        model = empiricalRegression(control_df)
+        model = self.empiricalRegression(control_df)
         
         results_df = pd.DataFrame(index = control_df.index)
         # Deal with zero counters, yeah right
@@ -180,7 +190,9 @@ class MeanVarianceKNN(MeanVarianceEmpirical):
 
     def __init__(self, *args):
         self.name = 'meanvarknn'
+        self.requires_normalization = True
         super().__init__(*args)
+        
 
     def analyzeData(self, control_df, treat_df):
 
